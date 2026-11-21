@@ -343,6 +343,21 @@ function loadDefaultSettings(storage) {
   }
 }
 
+const DEFAULT_TITLE_ID = 'duel-links';
+
+function hasSavedDefaultSettings(storage) {
+  try {
+    const raw = storage.getItem(DEFAULTS_STORAGE_KEY);
+    return raw !== null && raw !== undefined;
+  } catch (e) {
+    return false;
+  }
+}
+
+function resolveDefaultTitleId(storage) {
+  return hasSavedDefaultSettings(storage) ? 'none' : DEFAULT_TITLE_ID;
+}
+
 function saveDefaultSettings(storage, settings) {
   const errors = validateDefaultSettings(settings);
   if (errors.length) throw new Error(errors.join('; '));
@@ -358,6 +373,7 @@ function resolveDefaults(preset, saved) {
 
 const TITLE_PRESETS = [
   { id: 'none', name: '選択なし', mulligan: 'none' },
+  { id: 'duel-links', name: '遊戯王デュエルリンクス', mulligan: 'none', deckSize: 20, handSize: 4 },
   { id: 'sv-evolve', name: 'シャドウバース エボルヴ', mulligan: 'noChoiceNoDup', deckSize: 40, handSize: 5 },
   { id: 'union-arena', name: 'ユニオンアリーナ', mulligan: 'noChoiceNoDup' },
   { id: 'zx', name: 'Z/X', mulligan: 'noChoiceDup', deckSize: 40, handSize: 5 },
@@ -386,7 +402,7 @@ const api = {
   ProbabilityCalculator, TurnProgressionCalculator,
   FACTORY_DEFAULTS, DEFAULTS_STORAGE_KEY, DefaultSettings,
   loadDefaultSettings, saveDefaultSettings, resolveDefaults,
-  TITLE_PRESETS, formatPercent, CONDITION_TYPES, MULLIGAN_MODES,
+  TITLE_PRESETS, DEFAULT_TITLE_ID, hasSavedDefaultSettings, resolveDefaultTitleId, formatPercent, CONDITION_TYPES, MULLIGAN_MODES,
   handDistribution, enumerateJoint, finalHandDistribution,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
