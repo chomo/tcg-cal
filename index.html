@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TCG確率計算機</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f4f6f8; color: #222; line-height: 1.5; }
+main { max-width: 760px; margin: 0 auto; }
+h1 { font-size: 1.4rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 20px 0 8px; border-bottom: 2px solid #ddd; padding-bottom: 4px; }
+p.note { font-size: .85rem; color: #666; }
+.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+label { display: inline-block; font-size: .9rem; margin: 4px 8px 4px 0; }
+input[type=number], input[type=text], select { padding: 6px; border: 1px solid #bbb; border-radius: 6px; font-size: 1rem; width: 5.5em; }
+input[type=text].name { width: 10em; }
+button { padding: 8px 14px; border-radius: 6px; border: 1px solid #888; background: #fff; font-size: .95rem; cursor: pointer; }
+button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+button.danger { border-color: #c00; color: #c00; }
+button:disabled { opacity: .4; cursor: default; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cond { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 0; border-top: 1px solid #eee; }
+.cond.disabled { opacity: .45; }
+#result { font-size: 1.6rem; font-weight: bold; margin: 8px 0; }
+#error { color: #c00; font-weight: bold; }
+#graphWrap { overflow-x: auto; }
+#graph { display: block; }
+table { border-collapse: collapse; font-size: .85rem; }
+td, th { border: 1px solid #ddd; padding: 3px 8px; text-align: right; }
+details { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-top: 16px; }
+.badge { display: inline-block; background: #e0e7ff; color: #3730a3; border-radius: 999px; padding: 2px 10px; font-size: .8rem; margin-left: 8px; }
+</style>
+</head>
+<body>
+<main>
+<h1>TCG確率計算機</h1>
+<p>複数種類のカードをそれぞれ何枚引きたいかやデッキに残したいかを指定して確率を計算します。15ターン後までの確率もグラフで表示します。</p>
+
+<h2>共通設定</h2>
+<div class="card">
+  <div class="row">
+    <label>ゲームタイトル <select id="title"></select></label>
+    <span id="presetBadge" class="badge" hidden>プリセット適用中</span>
+    <button id="clearPreset" hidden>プリセット解除</button>
+  </div>
+  <div class="row">
+    <label>デッキ枚数 <input type="number" id="deckSize" min="1"></label>
+    <label>初手枚数 <input type="number" id="handSize" min="0"></label>
+    <label>デッキ外枚数 <input type="number" id="outside" min="0"></label>
+  </div>
+  <div class="row">
+    <label>マリガン <select id="mulligan">
+      <option value="none">なし</option>
+      <option value="noChoiceNoDup">選択無し・重複無し</option>
+      <option value="noChoiceDup">選択無し・重複有り</option>
+      <option value="choiceNoDup">選択有り・重複無し</option>
+      <option value="choiceDup">選択有り・重複有り</option>
+    </select></label>
+  </div>
+  <p class="note">選択無しは手札全てをマリガンします。選択有りはマリガンするカードを選べます（パリ式）。重複無しは戻したカードが再び引けません。デッキ外のカードはマリガン後に置くものとして処理します。</p>
+  <p class="note" id="weissNote" hidden>ヴァイスシュヴァルツは戻すカードを控え室へ送るため、「デッキに残す確率」や経過ターンの確率は正確に出ません。</p>
+  <p class="note" id="choiceNote" hidden>選択有りマリガンは、条件に近づく戻し方をした最善ケースとして計算しています。</p>
+</div>
+
+<h2>カードの設定</h2>
+<div id="cards"></div>
+<button id="addCard">カード追加</button>
+<p class="note">カード名は計算結果に影響しません。種類を増やしすぎると計算が重くなることがあります。</p>
+
+<h2>条件の設定</h2>
+<div id="combinations"></div>
+<button id="addCombination">組み合わせ追加</button>
+<p class="note">組み合わせ内は全て同時に満たす（AND）条件、組み合わせ間はどれか一つでも満たす（OR）条件です。組み合わせは31個まで増やせます。</p>
+
+<h2>計算結果</h2>
+<div class="card">
+  <div class="row">
+    <button id="calc" class="primary">計算する</button>
+    <label><input type="checkbox" id="round4" checked> 小数点第四位を四捨五入</label>
+  </div>
+  <div id="error"></div>
+  <div id="result"></div>
+  <div id="graphWrap"><canvas id="graph" width="640" height="200"></canvas></div>
+  <div id="turnTable"></div>
+  <p class="note">計算上の誤差で、必ず満たす条件でも99.99999%のように表示されることがあります。チェックを外すと、極端に低い確率は指数表記になります。</p>
+</div>
+
+<details>
+  <summary>初期枚数の初期値設定</summary>
+  <p class="note">起動時に各欄へ入る既定値を変更・保存できます。ゲームタイトルのプリセットが最優先、次にここで保存した値、最後に工場既定値です。設定の変更は編集中の入力には影響しません。「新規計算」ボタンで反映します。</p>
+  <div class="row">
+    <label>デッキ枚数 <input type="number" id="dDeck" min="1"></label>
+    <label>初手枚数 <input type="number" id="dHand" min="0"></label>
+    <label>デッキ外枚数 <input type="number" id="dOutside" min="0"></label>
+    <label>カード1件目の投入枚数 <input type="number" id="dCopies" min="0"></label>
+    <label>条件の必要枚数 <input type="number" id="dNeeded" min="0"></label>
+  </div>
+  <div class="row">
+    <button id="saveDefaults" class="primary">初期値を保存</button>
+    <button id="resetDefaults">初期値に戻す</button>
+    <button id="newCalc">新規計算（初期値を反映）</button>
+  </div>
+  <div id="defaultsMsg"></div>
+</details>
+<p class="note">出典: <a href="https://yazirusis.com/calc/probability.html">複数のカードの確率計算機（マリガン対応）</a> の仕様に倣っています。</p>
+</main>
+<script src="src/domain.js"></script>
+<script>
+(function () {
+  const T = window.TcgCal;
+  const $ = (id) => document.getElementById(id);
+  let savedDefaults = T.loadDefaultSettings(window.localStorage);
+  let preset = null;
+  let cards = [{ name: 'カード1', copies: savedDefaults.firstCardCopies }];
+  let combinations = [{ name: '組み合わせ1', enabled: true, conditions: [{ cardIndex: 0, type: 'drawAtLeast', needed: savedDefaults.neededCount, enabled: true }] }];
+
+  function effectiveDefaults() {
+    return T.resolveDefaults(preset ? { deckSize: preset.deckSize, handSize: preset.handSize } : null, savedDefaults);
+  }
+
+  function applyDefaultsToForm() {
+    const d = effectiveDefaults();
+    $('deckSize').value = d.deckSize;
+    $('handSize').value = d.handSize;
+    $('outside').value = d.outside;
+    if (cards.length) cards[0].copies = d.firstCardCopies;
+    combinations.forEach((c) => c.conditions.forEach((cond) => { cond.needed = d.neededCount; }));
+    render();
+  }
+
+  function renderTitles() {
+    const sel = $('title');
+    sel.innerHTML = '';
+    T.TITLE_PRESETS.forEach((p) => {
+      const o = document.createElement('option');
+      o.value = p.id; o.textContent = p.name;
+      sel.appendChild(o);
+    });
+  }
+
+  function renderCards() {
+    const el = $('cards');
+    el.innerHTML = '';
+    cards.forEach((card, i) => {
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML =
+        '<label>カード名 <input type="text" class="name" data-i="' + i + '" data-f="name" value=""></label>' +
+        '<label>投入枚数 <input type="number" min="0" data-i="' + i + '" data-f="copies" value="' + card.copies + '"></label>' +
+        (cards.length > 1 ? '<button class="danger" data-del-card="' + i + '">削除</button>' : '');
+      div.querySelector('[data-f="name"]').value = card.name;
+      el.appendChild(div);
+    });
+    el.querySelectorAll('input').forEach((inp) => {
+      inp.addEventListener('change', () => {
+        const i = +inp.dataset.i;
+        if (inp.dataset.f === 'name') cards[i].name = inp.value;
+        else cards[i].copies = +inp.value || 0;
+      });
+    });
+    el.querySelectorAll('[data-del-card]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const i = +b.dataset.delCard;
+        cards.splice(i, 1);
+        combinations.forEach((c) => {
+          c.conditions = c.conditions.filter((cond) => cond.cardIndex !== i)
+            .map((cond) => cond.cardIndex > i ? Object.assign({}, cond, { cardIndex: cond.cardIndex - 1 }) : cond);
+        });
+        render();
+      });
+    });
+  }
+
+  function renderCombinations() {
+    const el = $('combinations');
+    el.innerHTML = '';
+    combinations.forEach((combo, ci) => {
+      const div = document.createElement('div');
+      div.className = 'card';
+      let html = '<div class="row"><label><input type="checkbox" data-ci="' + ci + '" data-f="enabled"' + (combo.enabled ? ' checked' : '') + '> 有効</label>' +
+        '<label>組み合わせ名 <input type="text" class="name" data-ci="' + ci + '" data-f="name" value=""></label>' +
+        (combinations.length > 1 ? '<button class="danger" data-del-combo="' + ci + '">削除</button>' : '') + '</div>';
+      combo.conditions.forEach((cond, k) => {
+        const card = cards[cond.cardIndex];
+        html += '<div class="cond' + (cond.enabled ? '' : ' disabled') + '">' +
+          '<label><input type="checkbox" data-ci="' + ci + '" data-k="' + k + '" data-f="condEnabled"' + (cond.enabled ? ' checked' : '') + '> 有効</label>' +
+          '<span>' + (card ? card.name : '') + '</span>' +
+          '<select data-ci="' + ci + '" data-k="' + k + '" data-f="type">' +
+          '<option value="drawAtLeast">以上ドロー</option>' +
+          '<option value="drawExactly">丁度ドロー</option>' +
+          '<option value="remainAtLeast">以上デッキに残す</option>' +
+          '<option value="remainExactly">丁度デッキに残す</option></select>' +
+          '<label>必要枚数 <input type="number" min="0" data-ci="' + ci + '" data-k="' + k + '" data-f="needed" value="' + cond.needed + '"></label></div>';
+      });
+      div.innerHTML = html;
+      div.querySelector('[data-f="name"]').value = combo.name;
+      div.querySelectorAll('select[data-f="type"]').forEach((s, k) => { s.value = combo.conditions[k].type; });
+      el.appendChild(div);
+    });
+    el.querySelectorAll('input,select').forEach((inp) => {
+      inp.addEventListener('change', () => {
+        const ci = +inp.dataset.ci;
+        const f = inp.dataset.f;
+        if (f === 'enabled') combinations[ci].enabled = inp.checked;
+        else if (f === 'name') combinations[ci].name = inp.value;
+        else if (f === 'condEnabled') combinations[ci].conditions[+inp.dataset.k].enabled = inp.checked;
+        else if (f === 'type') combinations[ci].conditions[+inp.dataset.k].type = inp.value;
+        else if (f === 'needed') combinations[ci].conditions[+inp.dataset.k].needed = +inp.value || 0;
+        renderCombinations();
+      });
+    });
+    el.querySelectorAll('[data-del-combo]').forEach((b) => {
+      b.addEventListener('click', () => { combinations.splice(+b.dataset.delCombo, 1); render(); });
+    });
+  }
+
+  function render() { renderCards(); renderCombinations(); }
+
+  function buildRequest() {
+    const deckSize = +$('deckSize').value;
+    const handSize = +$('handSize').value;
+    const outside = +$('outside').value;
+    const mulliganMode = $('mulligan').value;
+    return T.CalculationRequest(deckSize, handSize, outside,
+      cards.map((c) => T.CardEntry(c.name, c.copies)),
+      combinations.map((c) => T.ConditionCombination(c.name,
+        c.conditions.map((cond) => T.DrawCondition(cond.cardIndex, cond.type, cond.needed, cond.enabled)), c.enabled)),
+      T.MulliganPolicy(mulliganMode, mulliganMode === 'none' ? 0 : 1));
+  }
+
+  function drawGraph(series) {
+    const cv = $('graph');
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const max = Math.max(0.01, ...series.map((s) => s.probability));
+    const bw = (cv.width - 40) / series.length;
+    ctx.strokeStyle = '#999';
+    ctx.beginPath(); ctx.moveTo(30, 10); ctx.lineTo(30, 170); ctx.lineTo(cv.width - 10, 170); ctx.stroke();
+    ctx.fillStyle = '#2563eb';
+    ctx.font = '11px system-ui';
+    series.forEach((s, i) => {
+      const h = (s.probability / max) * 150;
+      ctx.fillRect(32 + i * bw + 2, 170 - h, bw - 4, h);
+      if (i % 2 === 0) ctx.fillText('' + s.turn, 32 + i * bw + 2, 185);
+    });
+    ctx.fillStyle = '#666';
+    ctx.fillText('ターン', 32, 198);
+  }
+
+  function renderTurnTable(series) {
+    let html = '<table><tr><th>ターン</th>';
+    series.forEach((s) => { html += '<th>' + s.turn + '</th>'; });
+    html += '</tr><tr><td>確率</td>';
+    series.forEach((s) => { html += '<td>' + T.formatPercent(s.probability, $('round4').checked) + '</td>'; });
+    html += '</tr></table>';
+    $('turnTable').innerHTML = html;
+  }
+
+  $('calc').addEventListener('click', () => {
+    $('error').textContent = '';
+    let req;
+    try { req = buildRequest(); }
+    catch (e) { $('error').textContent = e.message; $('result').textContent = ''; return; }
+    const p = T.ProbabilityCalculator(req);
+    $('result').textContent = '初手で条件を満たす確率: ' + T.formatPercent(p, $('round4').checked);
+    const series = T.TurnProgressionCalculator(req);
+    drawGraph(series);
+    renderTurnTable(series);
+  });
+
+  $('addCard').addEventListener('click', () => {
+    cards.push({ name: 'カード' + (cards.length + 1), copies: savedDefaults.firstCardCopies });
+    const idx = cards.length - 1;
+    combinations.forEach((c) => c.conditions.push({ cardIndex: idx, type: 'drawAtLeast', needed: savedDefaults.neededCount, enabled: true }));
+    render();
+  });
+
+  $('addCombination').addEventListener('click', () => {
+    if (combinations.length >= 31) { $('error').textContent = '組み合わせは31個までです'; return; }
+    combinations.push({ name: '組み合わせ' + (combinations.length + 1), enabled: true,
+      conditions: cards.map((_, i) => ({ cardIndex: i, type: 'drawAtLeast', needed: savedDefaults.neededCount, enabled: true })) });
+    render();
+  });
+
+  $('title').addEventListener('change', () => {
+    const p = T.TITLE_PRESETS.find((x) => x.id === $('title').value);
+    preset = p && p.id !== 'none' ? p : null;
+    if (preset) {
+      $('mulligan').value = preset.mulligan;
+      if (preset.deckSize) $('deckSize').value = preset.deckSize;
+      if (preset.handSize) $('handSize').value = preset.handSize;
+      $('presetBadge').hidden = false;
+      $('clearPreset').hidden = false;
+    } else {
+      $('presetBadge').hidden = true;
+      $('clearPreset').hidden = true;
+    }
+    $('weissNote').hidden = $('title').value !== 'weiss';
+  });
+
+  $('mulligan').addEventListener('change', () => {
+    $('choiceNote').hidden = !['choiceNoDup', 'choiceDup'].includes($('mulligan').value);
+  });
+
+  $('clearPreset').addEventListener('click', () => {
+    preset = null;
+    $('title').value = 'none';
+    $('presetBadge').hidden = true;
+    $('clearPreset').hidden = true;
+    $('weissNote').hidden = true;
+    applyDefaultsToForm();
+  });
+
+  function fillDefaultsForm() {
+    $('dDeck').value = savedDefaults.deckSize;
+    $('dHand').value = savedDefaults.handSize;
+    $('dOutside').value = savedDefaults.outside;
+    $('dCopies').value = savedDefaults.firstCardCopies;
+    $('dNeeded').value = savedDefaults.neededCount;
+  }
+
+  $('saveDefaults').addEventListener('click', () => {
+    try {
+      savedDefaults = T.saveDefaultSettings(window.localStorage, {
+        deckSize: +$('dDeck').value, handSize: +$('dHand').value, outside: +$('dOutside').value,
+        firstCardCopies: +$('dCopies').value, neededCount: +$('dNeeded').value,
+      });
+      $('defaultsMsg').textContent = '保存しました。次回起動時・新規計算時に反映します。';
+    } catch (e) { $('defaultsMsg').textContent = '保存できません: ' + e.message; }
+  });
+
+  $('resetDefaults').addEventListener('click', () => {
+    savedDefaults = T.DefaultSettings();
+    T.saveDefaultSettings(window.localStorage, savedDefaults);
+    fillDefaultsForm();
+    $('defaultsMsg').textContent = '工場既定値に戻しました。';
+  });
+
+  $('newCalc').addEventListener('click', () => { applyDefaultsToForm(); $('defaultsMsg').textContent = '初期値を反映しました。'; });
+
+  renderTitles();
+  fillDefaultsForm();
+  applyDefaultsToForm();
+})();
+</script>
+</body>
+</html>

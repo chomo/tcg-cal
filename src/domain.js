@@ -351,8 +351,9 @@ function saveDefaultSettings(storage, settings) {
 }
 
 function resolveDefaults(preset, saved) {
-  if (preset) return Object.assign({}, saved, preset);
-  return Object.assign({}, saved);
+  const out = Object.assign({}, saved);
+  if (preset) for (const k of Object.keys(preset)) if (preset[k] !== undefined) out[k] = preset[k];
+  return out;
 }
 
 const TITLE_PRESETS = [
