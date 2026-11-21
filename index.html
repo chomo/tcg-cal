@@ -59,6 +59,7 @@ details { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding:
     </select></label>
   </div>
   <p class="note">選択無しは手札全てをマリガンします。選択有りはマリガンするカードを選べます（パリ式）。重複無しは戻したカードが再び引けません。デッキ外のカードはマリガン後に置くものとして処理します。</p>
+  <p class="note" id="duelLinksNote" hidden>遊戯王デュエルリンクスはデッキ20枚が最小で、一般的な構築枚数です。マリガンはありません。</p>
   <p class="note" id="weissNote" hidden>ヴァイスシュヴァルツは戻すカードを控え室へ送るため、「デッキに残す確率」や経過ターンの確率は正確に出ません。</p>
   <p class="note" id="choiceNote" hidden>選択有りマリガンは、条件に近づく戻し方をした最善ケースとして計算しています。</p>
 </div>
@@ -297,6 +298,7 @@ details { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding:
       $('clearPreset').hidden = true;
     }
     $('weissNote').hidden = $('title').value !== 'weiss';
+    $('duelLinksNote').hidden = $('title').value !== 'duel-links';
   });
 
   $('mulligan').addEventListener('change', () => {
@@ -309,6 +311,7 @@ details { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding:
     $('presetBadge').hidden = true;
     $('clearPreset').hidden = true;
     $('weissNote').hidden = true;
+    $('duelLinksNote').hidden = true;
     applyDefaultsToForm();
   });
 
@@ -340,6 +343,15 @@ details { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding:
   $('newCalc').addEventListener('click', () => { applyDefaultsToForm(); $('defaultsMsg').textContent = '初期値を反映しました。'; });
 
   renderTitles();
+  const defaultTitle = T.resolveDefaultTitleId(window.localStorage);
+  if (defaultTitle && defaultTitle !== 'none') {
+    preset = T.TITLE_PRESETS.find((x) => x.id === defaultTitle);
+    $('title').value = defaultTitle;
+    $('mulligan').value = preset.mulligan;
+    $('presetBadge').hidden = false;
+    $('clearPreset').hidden = false;
+    $('duelLinksNote').hidden = defaultTitle !== 'duel-links';
+  }
   fillDefaultsForm();
   applyDefaultsToForm();
 })();

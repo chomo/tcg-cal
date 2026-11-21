@@ -188,3 +188,25 @@ test('formatPercent: rounding and exponential display', () => {
   assert.equal(D.formatPercent(0.5, false), '50.0000%');
   assert.equal(D.formatPercent(1, true), '100%');
 });
+
+test('Duel Links preset exists with deck 20, hand 4, no mulligan', () => {
+  const p = D.TITLE_PRESETS.find((x) => x.id === 'duel-links');
+  assert.ok(p, 'duel-links preset must exist');
+  assert.equal(p.name, '遊戯王デュエルリンクス');
+  assert.equal(p.mulligan, 'none');
+  assert.equal(p.deckSize, 20);
+  assert.equal(p.handSize, 4);
+});
+
+test('default title is Duel Links on a fresh load, not when settings are saved', () => {
+  assert.equal(D.DEFAULT_TITLE_ID, 'duel-links');
+  assert.equal(D.resolveDefaultTitleId(memStorage()), 'duel-links');
+  const s = memStorage();
+  D.saveDefaultSettings(s, { deckSize: 50, handSize: 5, outside: 0, firstCardCopies: 4, neededCount: 1 });
+  assert.equal(D.resolveDefaultTitleId(s), 'none');
+});
+
+test('factory defaults are unchanged (40/5)', () => {
+  assert.equal(D.FACTORY_DEFAULTS.deckSize, 40);
+  assert.equal(D.FACTORY_DEFAULTS.handSize, 5);
+});
